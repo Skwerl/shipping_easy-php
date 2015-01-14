@@ -106,6 +106,11 @@ class ShippingEasy_ApiRequestor
 
   private function _curlRequest($meth, $absUrl, $headers, $payload)
   {
+
+	if (function_exists('wp_remote_get') && function_exists('wp_remote_post')) {
+		$this->_wpRequest($meth, $absUrl, $headers, $payload);
+	} else {
+
     $curl = curl_init();
     $meth = strtolower($meth);
     $opts = array();
@@ -149,7 +154,9 @@ class ShippingEasy_ApiRequestor
 
     $rcode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
-    return array($rbody, $rcode);
+	return array($rbody, $rcode); 
+
+	}
   }
 
   public function handleCurlError($errno, $message)
@@ -172,4 +179,46 @@ class ShippingEasy_ApiRequestor
     $msg .= "\n\n(Network error [errno $errno]: $message)";
     throw new ShippingEasy_ApiConnectionError($msg);
   }
+
+  private function _wpRequest($meth, $absUrl, $headers, $payload)
+  {
+
+    $args = array();
+
+    $meth = strtoupper($meth);
+   	if (($meth != 'POST') && ($meth != 'GET')) {
+		throw new ShippingEasy_ApiError("Unrecognized method $meth");
+	}
+    
+	if (!empty($payload) && $meth == 'POST') {
+		$payload = json_encode($payload);
+		$args['body'] = $payload;
+		$headers[] = 'Content-Type: application/json';
+		$headers[] = 'Content-Length: '.strlen($payload);
+	}
+	$args['method'] = $meth;
+	$args['headers'] = $headers;
+	$args['timeout'] = 30;
+
+	switch($meth) {
+		case 'GET':
+			$response = wp_remote_get($absUrl, $args);
+			if (is_wp_error($response)) {
+				$error_message = $response->get_error_message();
+				throw new ShippingEasy_ApiError("$error_message");
+			}
+			break;
+		case 'POST':
+			$response = wp_remote_post($absUrl, $args);
+			if (is_wp_error($response)) {
+				$error_message = $response->get_error_message();
+				throw new ShippingEasy_ApiError("$error_message");
+			}
+			break;
+	}
+
+	return array($response['body'], $response['response']['code']);			
+
+  }
+
 }
